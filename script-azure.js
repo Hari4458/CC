@@ -2,6 +2,7 @@ const API_URL = window.location.origin + '/api';
 let files = [];
 let currentUser = null;
 let authToken = null;
+let selectedNote = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -364,6 +365,7 @@ function openFileMenu(e, fileId, uploadedBy) {
     let menuHTML = `
         <button onclick="viewFile('${fileId}')">👁️ View</button>
         <button onclick="downloadFile('${fileId}')">⬇️ Download</button>
+        <button onclick="selectNoteForAi('${fileId}')">✨ Select for AI</button>
     `;
 
     if (isOwner) {
@@ -491,3 +493,119 @@ async function deleteFolderSubject(subject) {
         console.error('Folder delete error:', error);
     }
 }
+/* ---------- AI ASSISTANT ---------- */
+
+function selectNoteForAi(fileId) {
+    selectedNote = files.find(f => f.id === fileId);
+    if (!selectedNote) return;
+    
+    document.getElementById('aiStatus').textContent = `Focusing on: ${selectedNote.filename}`;
+    alert(`✨ AI Assistant is now focusing on "${selectedNote.filename}"`);
+    
+    // Switch to Chat tab automatically
+    switchAiTab('chat');
+}
+
+function switchAiTab(tab) {
+    // Update tabs
+    document.querySelectorAll('.ai-tab').forEach(t => t.classList.remove('active'));
+    const clickedTab = document.querySelector(`.ai-tab[onclick*="${tab}"]`);
+    if (clickedTab) clickedTab.classList.add('active');
+    
+    // Update content
+    document.querySelectorAll('.ai-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(`ai${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.add('active');
+}
+
+async function sendAiChat() {
+    const input = document.getElementById('aiInput');
+    const question = input.value.trim();
+    if (!question) return;
+    
+    const chatMessages = document.getElementById('chatMessages');
+    
+    // Add user message
+    const userMsg = document.createElement('div');
+    userMsg.className = 'message user';
+    userMsg.textContent = question;
+    chatMessages.appendChild(userMsg);
+    input.value = '';
+    
+    // Thinking message
+    const thinkingMsg = document.createElement('div');
+    thinkingMsg.className = 'message ai';
+    thinkingMsg.textContent = '...';
+    chatMessages.appendChild(thinkingMsg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    try {
+        const context = selectedNote ? `Selected Note: ${selectedNote.filename} (Subject: ${selectedNote.subject})` : "General study assistance";
+        const response = await fetch(`${API_URL}/ai/chat`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ text: context, question })
+        });
+        
+        const data = await response.json();
+        thinkingMsg.textContent = data.answer || data.error || 'No response from AI';
+    } catch (error) {
+        thinkingMsg.textContent = '❌ Error connecting to AI service.';
+    }
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function summarizeCurrentNote() {
+    if (!selectedNote) return alert('❌ Please select a note first from the "⋮" menu!');
+    
+    const resultDiv = document.getElementById('summaryResult');
+    resultDiv.textContent = '⏳ Summarizing your notes...';
+    
+    try {
+        const response = await fetch(`${API_URL}/ai/summarize`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ text: `Note Content Summary Request for: ${selectedNote.filename} (${selectedNote.subject})` })
+        });
+        
+        const data = await response.json();
+        resultDiv.textContent = data.summary || data.error || 'Failed to generate summary';
+    } catch (error) {
+        resultDiv.textContent = '❌ Error connecting to AI service.';
+    }
+}
+
+async function generateQuiz() {
+    if (!selectedNote) return alert('❌ Please select a note first!');
+    
+    const resultDiv = document.getElementById('quizResult');
+    resultDiv.textContent = '⏳ Generating quiz questions...';
+    
+    try {
+        const response = await fetch(`${API_URL}/ai/quiz`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ text: `Generate quiz for: ${selectedNote.filename} (${selectedNote.subject})` })
+        });
+        
+        const data = await response.json();
+        resultDiv.textContent = data.quiz || data.error || 'Failed to generate quiz';
+    } catch (error) {
+        resultDiv.textContent = '❌ Error connecting to AI service.';
+    }
+}
+
+// Add enter key listener for chat
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && document.activeElement.id === 'aiInput') {
+        sendAiChat();
+    }
+});

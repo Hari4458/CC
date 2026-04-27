@@ -867,6 +867,142 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', version: '1.0', storage: 'SQL Database' });
 });
 
+// ======= AI ROUTES =======
+// 7. AI Summarize
+app.post('/api/ai/summarize', verifyToken, async (req, res) => {
+    try {
+        const { text } = req.body;
+        if (!text) return res.status(400).json({ error: 'No text provided' });
+
+        const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+        const key = process.env.AZURE_OPENAI_KEY;
+        const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+
+        if (!endpoint || !key || !deployment) {
+            return res.status(500).json({ error: 'AI Service not configured' });
+        }
+
+        const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=2024-02-15-preview`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'api-key': key
+            },
+            body: JSON.stringify({
+                messages: [
+                    { role: "system", content: "You are a helpful study assistant. Summarize the following notes briefly for exam revision. Focus on key concepts and bullet points." },
+                    { role: "user", content: text }
+                ],
+                max_tokens: 800,
+                temperature: 0.7
+            })
+        });
+
+        const data = await response.json();
+        if (data.error) {
+            console.error('AI Error:', data.error);
+            return res.status(500).json({ error: 'AI processing failed: ' + data.error.message });
+        }
+
+        res.json({ summary: data.choices[0].message.content });
+    } catch (error) {
+        console.error('AI Summarize error:', error);
+        res.status(500).json({ error: 'AI Summarize failed' });
+    }
+});
+
+// 8. AI Chat (Q&A)
+app.post('/api/ai/chat', verifyToken, async (req, res) => {
+    try {
+        const { text, question } = req.body;
+        if (!text || !question) return res.status(400).json({ error: 'Text and question required' });
+
+        const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+        const key = process.env.AZURE_OPENAI_KEY;
+        const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+
+        if (!endpoint || !key || !deployment) {
+            return res.status(500).json({ error: 'AI Service not configured' });
+        }
+
+        const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=2024-02-15-preview`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'api-key': key
+            },
+            body: JSON.stringify({
+                messages: [
+                    { role: "system", content: "You are a helpful study assistant. Answer questions based ONLY on the provided notes. If the answer is not in the notes, say 'I don't find that information in your notes.'" },
+                    { role: "user", content: `Notes:\n${text}\n\nQuestion: ${question}` }
+                ],
+                max_tokens: 800,
+                temperature: 0.7
+            })
+        });
+
+        const data = await response.json();
+        if (data.error) {
+            console.error('AI Error:', data.error);
+            return res.status(500).json({ error: 'AI processing failed' });
+        }
+
+        res.json({ answer: data.choices[0].message.content });
+    } catch (error) {
+        console.error('AI Chat error:', error);
+        res.status(500).json({ error: 'AI Chat failed' });
+    }
+});
+
+// 9. AI Quiz Generator
+app.post('/api/ai/quiz', verifyToken, async (req, res) => {
+    try {
+        const { text } = req.body;
+        if (!text) return res.status(400).json({ error: 'No text provided' });
+
+        const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+        const key = process.env.AZURE_OPENAI_KEY;
+        const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+
+        if (!endpoint || !key || !deployment) {
+            return res.status(500).json({ error: 'AI Service not configured' });
+        }
+
+        const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=2024-02-15-preview`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'api-key': key
+            },
+            body: JSON.stringify({
+                messages: [
+                    { role: "system", content: "Generate 5 Multiple Choice Questions (MCQs) from the provided notes. Provide the answer for each question at the end." },
+                    { role: "user", content: text }
+                ],
+                max_tokens: 1000,
+                temperature: 0.8
+            })
+        });
+
+        const data = await response.json();
+        if (data.error) {
+            console.error('AI Error:', data.error);
+            return res.status(500).json({ error: 'AI processing failed' });
+        }
+
+        res.json({ quiz: data.choices[0].message.content });
+    } catch (error) {
+        console.error('AI Quiz error:', error);
+        res.status(500).json({ error: 'AI Quiz failed' });
+    }
+});
+
 // Serve frontend
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
