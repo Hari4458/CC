@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>StudyCloud</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+
+<body>
+
+  <header class="navbar">
+    <h1>StudyCloud</h1>
+    <div style="display: flex; gap: 15px; align-items: center;">
+      <span id="userDisplay" style="color: white; font-size: 14px;"></span>
+      <button onclick="toggleTheme()" class="theme-btn">🌙</button>
+      <button onclick="logout()"
+        style="background: #ff6b6b; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;">Logout</button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <section class="upload-box">
+      <h2>Upload Study Material</h2>
+
+      <input type="text" id="subject" placeholder="Subject (Folder)">
+      <input type="text" id="filename" placeholder="File Name">
+
+      <label class="file-upload">
+        <input type="file" id="fileInput">
+        <span>📎 Choose File</span>
+      </label>
+
+      <p id="fileName">No file selected</p>
+
+      <button class="upload-btn" onclick="uploadFile()">Upload File</button>
+    </section>
+
+    <section class="notes-section">
+      <h2>Your Notes</h2>
+      <div id="folders"></div>
+    </section>
+
+  </main>
+
+  <!-- Floating Menu -->
+  <div id="menu" class="menu"></div>
+
+  <script src="script-azure.js"></script>
+</body>
+
+</html>

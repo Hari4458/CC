@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+.vscode/
+.DS_Store
+*.log
+*.swp
+*.swo
+.firebase/
+dist/
+build/
+coverage/
+.azure/
+deploy.zip

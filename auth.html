@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyCloud - Authentication</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .auth-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 400px;
+            padding: 40px;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .logo p {
+            color: #999;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .toggle-forms {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .toggle-forms a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .toggle-forms a:hover {
+            text-decoration: underline;
+        }
+
+        .form-section {
+            display: none;
+        }
+
+        .form-section.active {
+            display: block;
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .success.show {
+            display: block;
+        }
+
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="auth-container">
+        <div class="logo">
+            <h1>📚 StudyCloud</h1>
+            <p>Your Study Notes, Anytime, Anywhere</p>
+        </div>
+
+        <div id="errorMsg" class="error"></div>
+        <div id="successMsg" class="success"></div>
+
+        <!-- Sign In Form -->
+        <div id="signinForm" class="form-section active">
+            <h2 style="margin-bottom: 20px; color: #333; font-size: 20px;">Sign In</h2>
+            <div class="form-group">
+                <label for="signinEmail">Email</label>
+                <input type="email" id="signinEmail" placeholder="your@email.com">
+            </div>
+            <div class="form-group">
+                <label for="signinPassword">Password</label>
+                <input type="password" id="signinPassword" placeholder="••••••••">
+            </div>
+            <button class="btn btn-primary" onclick="handleSignIn()">Sign In</button>
+
+            <div class="toggle-forms">
+                Don't have an account? <a onclick="toggleForm('signup')">Sign Up</a>
+            </div>
+        </div>
+
+        <!-- Sign Up Form -->
+        <div id="signupForm" class="form-section">
+            <h2 style="margin-bottom: 20px; color: #333; font-size: 20px;">Create Account</h2>
+            <div class="form-group">
+                <label for="signupEmail">Email</label>
+                <input type="email" id="signupEmail" placeholder="your@email.com">
+            </div>
+            <div class="form-group">
+                <label for="signupUsername">Username</label>
+                <input type="text" id="signupUsername" placeholder="Choose a username">
+            </div>
+            <div class="form-group">
+                <label for="signupPassword">Password</label>
+                <input type="password" id="signupPassword" placeholder="••••••••">
+            </div>
+            <div class="form-group">
+                <label for="signupPasswordConfirm">Confirm Password</label>
+                <input type="password" id="signupPasswordConfirm" placeholder="••••••••">
+            </div>
+            <button class="btn btn-primary" onclick="handleSignUp()">Create Account</button>
+
+            <div class="toggle-forms">
+                Already have an account? <a onclick="toggleForm('signin')">Sign In</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin + '/api';
+
+        function toggleForm(form) {
+            document.getElementById('signinForm').classList.remove('active');
+            document.getElementById('signupForm').classList.remove('active');
+
+            if (form === 'signin') {
+                document.getElementById('signinForm').classList.add('active');
+            } else {
+                document.getElementById('signupForm').classList.add('active');
+            }
+
+            clearMessages();
+            clearForm();
+        }
+
+        function clearMessages() {
+            document.getElementById('errorMsg').classList.remove('show');
+            document.getElementById('successMsg').classList.remove('show');
+        }
+
+        function clearForm() {
+            document.querySelectorAll('input').forEach(input => input.value = '');
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMsg');
+            errorDiv.textContent = '❌ ' + message;
+            errorDiv.classList.add('show');
+        }
+
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMsg');
+            successDiv.textContent = '✓ ' + message;
+            successDiv.classList.add('show');
+        }
+
+        async function handleSignUp() {
+            const email = document.getElementById('signupEmail').value.trim();
+            const username = document.getElementById('signupUsername').value.trim();
+            const password = document.getElementById('signupPassword').value;
+            const passwordConfirm = document.getElementById('signupPasswordConfirm').value;
+
+            clearMessages();
+
+            if (!email || !username || !password) {
+                showError('Please fill all fields');
+                return;
+            }
+
+            if (password.length < 6) {
+                showError('Password must be at least 6 characters');
+                return;
+            }
+
+            if (password !== passwordConfirm) {
+                showError('Passwords do not match');
+                return;
+            }
+
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '⏳ Creating account...';
+
+            try {
+                const response = await fetch(`${API_URL}/auth/signup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, username, password, passwordConfirm })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    showError(result.error || 'Signup failed');
+                    btn.disabled = false;
+                    btn.textContent = 'Create Account';
+                    return;
+                }
+
+                if (result.requiresVerification) {
+                    clearForm();
+                    showSuccess('✓ Account created! Please check your email to verify your account. Click the link in the email to continue.');
+                    setTimeout(() => {
+                        // After a few seconds, show the verification reminder
+                        showSuccess('📧 Check your email for the verification link to activate your account.');
+                    }, 3000);
+                } else {
+                    // Fallback for backward compatibility (in case email verification is disabled)
+                    localStorage.setItem('authToken', result.token);
+                    localStorage.setItem('userId', result.userId);
+                    localStorage.setItem('username', result.username);
+
+                    showSuccess('Account created! Redirecting...');
+                    setTimeout(() => window.location.href = 'index.html', 1500);
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = 'Create Account';
+            }
+        }
+
+        async function handleSignIn() {
+            const email = document.getElementById('signinEmail').value.trim();
+            const password = document.getElementById('signinPassword').value;
+
+            clearMessages();
+
+            if (!email || !password) {
+                showError('Please enter email and password');
+                return;
+            }
+
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '⏳ Signing in...';
+
+            try {
+                const response = await fetch(`${API_URL}/auth/signin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    showError(result.error || 'Signin failed');
+                    btn.disabled = false;
+                    btn.textContent = 'Sign In';
+                    return;
+                }
+
+                // Check if email verification is required
+                if (result.requiresVerification) {
+                    showError('❌ Please verify your email first. Check your email for the verification link.');
+                    btn.disabled = false;
+                    btn.textContent = 'Sign In';
+                    return;
+                }
+
+                localStorage.setItem('authToken', result.token);
+                localStorage.setItem('userId', result.userId);
+                localStorage.setItem('username', result.username);
+
+                showSuccess('Login successful! Redirecting...');
+                setTimeout(() => window.location.href = 'index.html', 1500);
+            } catch (error) {
+                showError('Network error: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = 'Sign In';
+            }
+        }
+
+        // Check if already logged in
+        window.addEventListener('load', () => {
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                window.location.href = 'index.html';
+            }
+        });
+    </script>
+</body>
+
+</html>
