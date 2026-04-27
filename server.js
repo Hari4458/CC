@@ -867,46 +867,37 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', version: '1.0', storage: 'SQL Database' });
 });
 
-// ======= AI ROUTES =======
+// ======= AI ROUTES (GEMINI FREE TIER) =======
+
 // 7. AI Summarize
 app.post('/api/ai/summarize', verifyToken, async (req, res) => {
     try {
         const { text } = req.body;
         if (!text) return res.status(400).json({ error: 'No text provided' });
 
-        const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-        const key = process.env.AZURE_OPENAI_KEY;
-        const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) return res.status(500).json({ error: 'Gemini API not configured' });
 
-        if (!endpoint || !key || !deployment) {
-            return res.status(500).json({ error: 'AI Service not configured' });
-        }
-
-        const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=2024-02-15-preview`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
         const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'api-key': key
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                messages: [
-                    { role: "system", content: "You are a helpful study assistant. Summarize the following notes briefly for exam revision. Focus on key concepts and bullet points." },
-                    { role: "user", content: text }
-                ],
-                max_tokens: 800,
-                temperature: 0.7
+                contents: [{
+                    parts: [{ text: `Summarize the following notes briefly for exam revision. Focus on key concepts and bullet points:\n\n${text}` }]
+                }]
             })
         });
 
         const data = await response.json();
         if (data.error) {
-            console.error('AI Error:', data.error);
-            return res.status(500).json({ error: 'AI processing failed: ' + data.error.message });
+            console.error('Gemini Error:', data.error);
+            return res.status(500).json({ error: 'Gemini processing failed' });
         }
 
-        res.json({ summary: data.choices[0].message.content });
+        const summary = data.candidates[0].content.parts[0].text;
+        res.json({ summary });
     } catch (error) {
         console.error('AI Summarize error:', error);
         res.status(500).json({ error: 'AI Summarize failed' });
@@ -919,39 +910,29 @@ app.post('/api/ai/chat', verifyToken, async (req, res) => {
         const { text, question } = req.body;
         if (!text || !question) return res.status(400).json({ error: 'Text and question required' });
 
-        const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-        const key = process.env.AZURE_OPENAI_KEY;
-        const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) return res.status(500).json({ error: 'Gemini API not configured' });
 
-        if (!endpoint || !key || !deployment) {
-            return res.status(500).json({ error: 'AI Service not configured' });
-        }
-
-        const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=2024-02-15-preview`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
         const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'api-key': key
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                messages: [
-                    { role: "system", content: "You are a helpful study assistant. Answer questions based ONLY on the provided notes. If the answer is not in the notes, say 'I don't find that information in your notes.'" },
-                    { role: "user", content: `Notes:\n${text}\n\nQuestion: ${question}` }
-                ],
-                max_tokens: 800,
-                temperature: 0.7
+                contents: [{
+                    parts: [{ text: `You are a helpful study assistant. Answer questions based ONLY on the provided notes. If the answer is not in the notes, say 'I don't find that information in your notes.'\n\nNotes:\n${text}\n\nQuestion: ${question}` }]
+                }]
             })
         });
 
         const data = await response.json();
         if (data.error) {
-            console.error('AI Error:', data.error);
-            return res.status(500).json({ error: 'AI processing failed' });
+            console.error('Gemini Error:', data.error);
+            return res.status(500).json({ error: 'Gemini processing failed' });
         }
 
-        res.json({ answer: data.choices[0].message.content });
+        const answer = data.candidates[0].content.parts[0].text;
+        res.json({ answer });
     } catch (error) {
         console.error('AI Chat error:', error);
         res.status(500).json({ error: 'AI Chat failed' });
@@ -964,39 +945,29 @@ app.post('/api/ai/quiz', verifyToken, async (req, res) => {
         const { text } = req.body;
         if (!text) return res.status(400).json({ error: 'No text provided' });
 
-        const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-        const key = process.env.AZURE_OPENAI_KEY;
-        const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) return res.status(500).json({ error: 'Gemini API not configured' });
 
-        if (!endpoint || !key || !deployment) {
-            return res.status(500).json({ error: 'AI Service not configured' });
-        }
-
-        const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=2024-02-15-preview`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
         const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'api-key': key
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                messages: [
-                    { role: "system", content: "Generate 5 Multiple Choice Questions (MCQs) from the provided notes. Provide the answer for each question at the end." },
-                    { role: "user", content: text }
-                ],
-                max_tokens: 1000,
-                temperature: 0.8
+                contents: [{
+                    parts: [{ text: `Generate 5 Multiple Choice Questions (MCQs) from the provided notes. Provide the answer for each question at the end.\n\nNotes:\n${text}` }]
+                }]
             })
         });
 
         const data = await response.json();
         if (data.error) {
-            console.error('AI Error:', data.error);
-            return res.status(500).json({ error: 'AI processing failed' });
+            console.error('Gemini Error:', data.error);
+            return res.status(500).json({ error: 'Gemini processing failed' });
         }
 
-        res.json({ quiz: data.choices[0].message.content });
+        const quiz = data.candidates[0].content.parts[0].text;
+        res.json({ quiz });
     } catch (error) {
         console.error('AI Quiz error:', error);
         res.status(500).json({ error: 'AI Quiz failed' });
