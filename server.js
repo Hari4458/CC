@@ -866,7 +866,7 @@ app.post('/api/ai/summarize', verifyToken, async (req, res) => {
         if (!fileData) return res.status(404).json({ error: 'File content not found' });
 
         const apiKey = process.env.GEMINI_API_KEY;
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
         const prompt = `Summarize these notes for exam revision. File: ${fileData.filename}\nContent:\n${fileData.text.substring(0, 10000)}`;
 
@@ -903,7 +903,7 @@ app.post('/api/ai/chat', verifyToken, async (req, res) => {
     try {
         const { fileId, question } = req.body;
         const apiKey = process.env.GEMINI_API_KEY;
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
         let context = "The user is asking about the StudyCloud app.";
         if (fileId) {
@@ -963,7 +963,7 @@ app.post('/api/ai/quiz', verifyToken, async (req, res) => {
 
         const fileData = await getFileContent(fileId);
         const apiKey = process.env.GEMINI_API_KEY;
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
         const prompt = `Generate 5 MCQs with answers for these notes: ${fileData.filename}\nContent:\n${fileData.text.substring(0, 10000)}`;
 
