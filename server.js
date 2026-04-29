@@ -822,9 +822,10 @@ async function getFileContent(fileId) {
                     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
                     const downloadResponse = await blockBlobClient.download(0);
                     const body = await streamToText(downloadResponse.readableStreamBody);
+                    console.log(`📖 AI analyzing file: ${filename} (${body.length} chars)`);
                     resolve({ filename, text: body });
                 } catch (e) {
-                    console.error('Blob read error:', e);
+                    console.error('❌ Blob read error:', e);
                     resolve(null);
                 }
             });
@@ -890,13 +891,26 @@ app.post('/api/ai/chat', verifyToken, async (req, res) => {
         const apiKey = process.env.GEMINI_API_KEY;
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
-        let context = "The user is asking about StudyCloud.";
+        let context = "The user is asking about the StudyCloud app.";
         if (fileId) {
             const fileData = await getFileContent(fileId);
-            if (fileData) context = `User is focusing on file: ${fileData.filename}\nContent:\n${fileData.text.substring(0, 10000)}`;
+            if (fileData && fileData.text) {
+                context = `ANALYZED DATA FROM DATABASE:\nFile Name: ${fileData.filename}\nNote Content:\n"""\n${fileData.text}\n"""`;
+            } else {
+                context = "User has selected a note, but it appears to be empty or unreadable.";
+            }
         }
 
-        const systemPrompt = `You are the StudyCloud AI Assistant. ${APP_INFO}\n\n${context}\n\nQuestion: ${question}`;
+        const systemPrompt = `You are the StudyCloud AI Study Assistant. ${APP_INFO}
+        
+INSTRUCTIONS:
+1. If the user asks about their notes, use the "ANALYZED DATA" provided below.
+2. If the data is missing, explain that you are ready to analyze their files once they upload text-based notes.
+3. Be concise and professional.
+
+${context}
+
+User Question: ${question}`;
 
         const response = await fetch(url, {
             method: 'POST',
@@ -908,6 +922,7 @@ app.post('/api/ai/chat', verifyToken, async (req, res) => {
         const answer = data.candidates[0].content.parts[0].text;
         res.json({ answer });
     } catch (error) {
+        console.error('AI Chat Error:', error);
         res.status(500).json({ error: 'AI Chat failed' });
     }
 });
