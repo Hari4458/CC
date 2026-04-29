@@ -931,7 +931,7 @@ app.post('/api/ai/chat', verifyToken, async (req, res) => {
             }
         }
 
-        const systemPrompt = `You are the StudyCloud AI Study Assistant. ${APP_INFO}
+        const systemPrompt = `You are the StudyCloud AI Assistant. ${APP_INFO}
         
 INSTRUCTIONS:
 1. If the user asks about their notes, use the "ANALYZED DATA" provided below.
