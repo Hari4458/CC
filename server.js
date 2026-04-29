@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { BlobServiceClient } = require('@azure/storage-blob');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
 const app = express();
@@ -83,6 +84,18 @@ async function sendVerificationEmail(email, username, verificationToken) {
 // Azure Blob Storage Configuration
 const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
 const containerClient = blobServiceClient.getContainerClient('notes');
+
+// Google Gemini AI Configuration
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const geminiModel = genAI.getGenerativeModel({ 
+    model: "gemini-1.5-flash",
+    safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ]
+});
 
 // Azure SQL Connection
 const sqlConfig = {
@@ -903,12 +916,10 @@ app.post('/api/ai/summarize', verifyToken, async (req, res) => {
     }
 });
 
-// 8. AI Chat (Q&A)
+// 8. AI Chat (Q&A) - POWERED BY OFFICIAL SDK
 app.post('/api/ai/chat', verifyToken, async (req, res) => {
     try {
         const { fileId, question } = req.body;
-        const apiKey = process.env.GEMINI_API_KEY;
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
 
         let context = "The user is asking about the StudyCloud app.";
         if (fileId) {
@@ -931,71 +942,31 @@ ${context}
 
 User Question: ${question}`;
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                contents: [{ parts: [{ text: systemPrompt }] }],
-                safetySettings: [
-                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                ]
-            })
-        });
-
-        const data = await response.json();
-
-        if (!data.candidates || data.candidates.length === 0) {
-            console.error('❌ Gemini Chat Error:', JSON.stringify(data));
-            return res.status(500).json({ error: 'AI Chat failed. The response might have been blocked by safety filters.' });
-        }
-
-        const answer = data.candidates[0].content.parts[0].text;
+        const result = await geminiModel.generateContent(systemPrompt);
+        const response = await result.response;
+        const answer = response.text();
         res.json({ answer });
     } catch (error) {
         console.error('AI Chat Error:', error);
-        res.status(500).json({ error: 'AI Chat failed' });
+        res.status(500).json({ error: 'AI Chat failed. Please try again.' });
     }
 });
 
-// 9. AI Quiz Generator
+// 9. AI Quiz Generator - POWERED BY OFFICIAL SDK
 app.post('/api/ai/quiz', verifyToken, async (req, res) => {
     try {
         const { fileId } = req.body;
         if (!fileId) return res.status(400).json({ error: 'No file selected' });
 
         const fileData = await getFileContent(fileId);
-        const apiKey = process.env.GEMINI_API_KEY;
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
-
         const prompt = `Generate 5 MCQs with answers for these notes: ${fileData.filename}\nContent:\n${fileData.text.substring(0, 10000)}`;
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                contents: [{ parts: [{ text: prompt }] }],
-                safetySettings: [
-                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                ]
-            })
-        });
-
-        const data = await response.json();
-
-        if (!data.candidates || data.candidates.length === 0) {
-            console.error('❌ Gemini Quiz Error:', JSON.stringify(data));
-            return res.status(500).json({ error: 'AI Quiz generation failed.' });
-        }
-
-        const quiz = data.candidates[0].content.parts[0].text;
+        const result = await geminiModel.generateContent(prompt);
+        const response = await result.response;
+        const quiz = response.text();
         res.json({ quiz });
     } catch (error) {
+        console.error('AI Quiz Error:', error);
         res.status(500).json({ error: 'AI Quiz failed' });
     }
 });
