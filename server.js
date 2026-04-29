@@ -877,6 +877,12 @@ app.post('/api/ai/summarize', verifyToken, async (req, res) => {
         });
 
         const data = await response.json();
+        
+        if (!data.candidates || data.candidates.length === 0) {
+            console.error('❌ Gemini Summarize Error:', JSON.stringify(data));
+            return res.status(500).json({ error: 'AI failed to generate summary. Check logs for safety blocks.' });
+        }
+
         const summary = data.candidates[0].content.parts[0].text;
         res.json({ summary });
     } catch (error) {
@@ -919,6 +925,12 @@ User Question: ${question}`;
         });
 
         const data = await response.json();
+
+        if (!data.candidates || data.candidates.length === 0) {
+            console.error('❌ Gemini Chat Error:', JSON.stringify(data));
+            return res.status(500).json({ error: 'AI Chat failed. The response might have been blocked by safety filters.' });
+        }
+
         const answer = data.candidates[0].content.parts[0].text;
         res.json({ answer });
     } catch (error) {
@@ -946,6 +958,12 @@ app.post('/api/ai/quiz', verifyToken, async (req, res) => {
         });
 
         const data = await response.json();
+
+        if (!data.candidates || data.candidates.length === 0) {
+            console.error('❌ Gemini Quiz Error:', JSON.stringify(data));
+            return res.status(500).json({ error: 'AI Quiz generation failed.' });
+        }
+
         const quiz = data.candidates[0].content.parts[0].text;
         res.json({ quiz });
     } catch (error) {
