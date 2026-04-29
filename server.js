@@ -856,7 +856,7 @@ Features: Secure login, Folder-based organization (Subjects), Multi-format file 
 Database: Azure SQL. Backend: Node.js. Hosting: Azure App Service.
 `;
 
-// 7. AI Summarize
+// 7. AI Summarize (NOW POWERED BY AZURE AI)
 app.post('/api/ai/summarize', verifyToken, async (req, res) => {
     try {
         const { fileId } = req.body;
@@ -865,36 +865,41 @@ app.post('/api/ai/summarize', verifyToken, async (req, res) => {
         const fileData = await getFileContent(fileId);
         if (!fileData) return res.status(404).json({ error: 'File content not found' });
 
-        const apiKey = process.env.GEMINI_API_KEY;
-        const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        const key = process.env.AZURE_LANGUAGE_KEY;
+        const endpoint = process.env.AZURE_LANGUAGE_ENDPOINT;
 
-        const prompt = `Summarize these notes for exam revision. File: ${fileData.filename}\nContent:\n${fileData.text.substring(0, 10000)}`;
+        // Azure Language Service Extractive Summarization (Synchronous call for small/medium text)
+        const url = `${endpoint}/language/:analyze-text?api-version=2023-04-01`;
 
         const response = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                contents: [{ parts: [{ text: prompt }] }],
-                safetySettings: [
-                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                ]
+            headers: {
+                'Ocp-Apim-Subscription-Key': key,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                "kind": "ExtractiveSummarization",
+                "parameters": { "sentenceCount": 3 },
+                "analysisInput": {
+                    "documents": [
+                        { "id": "1", "language": "en", "text": fileData.text.substring(0, 5000) }
+                    ]
+                }
             })
         });
 
         const data = await response.json();
         
-        if (!data.candidates || data.candidates.length === 0) {
-            console.error('❌ Gemini Summarize Error:', JSON.stringify(data));
-            return res.status(500).json({ error: 'AI failed to generate summary. Check logs for safety blocks.' });
+        if (data.results && data.results.documents && data.results.documents[0]) {
+            const summary = data.results.documents[0].sentences.map(s => s.text).join(' ');
+            res.json({ summary: "📊 [Azure AI Summary]: " + summary });
+        } else {
+            console.error('Azure AI Error:', JSON.stringify(data));
+            res.status(500).json({ error: 'Azure AI Summarization failed' });
         }
-
-        const summary = data.candidates[0].content.parts[0].text;
-        res.json({ summary });
     } catch (error) {
-        res.status(500).json({ error: 'AI Summarize failed' });
+        console.error('Azure AI Summarize error:', error);
+        res.status(500).json({ error: 'Azure AI Summarize failed' });
     }
 });
 
