@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const { BlobServiceClient } = require('@azure/storage-blob');
 require('dotenv').config();
 
 const app = express();
@@ -79,6 +80,10 @@ async function sendVerificationEmail(email, username, verificationToken) {
     }
 }
 
+// Azure Blob Storage Configuration
+const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
+const containerClient = blobServiceClient.getContainerClient('notes');
+
 // Azure SQL Connection
 const sqlConfig = {
     authentication: {
@@ -138,7 +143,7 @@ async function initializeDatabase() {
       UserId UNIQUEIDENTIFIER NOT NULL,
       Subject NVARCHAR(MAX) NOT NULL,
       Filename NVARCHAR(MAX) NOT NULL,
-      FileData VARBINARY(MAX) NOT NULL,
+      BlobName NVARCHAR(MAX) NOT NULL,
       FileSize INT NOT NULL,
       CreatedAt DATETIME DEFAULT GETUTCDATE(),
       UpdatedAt DATETIME DEFAULT GETUTCDATE(),
@@ -191,12 +196,13 @@ async function initializeDatabase() {
 
                                     // Then create it fresh
                                     const recreateRequest = new Request(`
+                                        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Files' and xtype='U')
                                         CREATE TABLE Files (
                                           Id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
                                           UserId UNIQUEIDENTIFIER NOT NULL,
                                           Subject NVARCHAR(MAX) NOT NULL,
                                           Filename NVARCHAR(MAX) NOT NULL,
-                                          FileData VARBINARY(MAX) NOT NULL,
+                                          BlobName NVARCHAR(MAX) NOT NULL,
                                           FileSize INT NOT NULL,
                                           CreatedAt DATETIME DEFAULT GETUTCDATE(),
                                           UpdatedAt DATETIME DEFAULT GETUTCDATE(),
@@ -536,72 +542,51 @@ app.get('/api/auth/verify', verifyToken, (req, res) => {
 
 // ======= API ROUTES =======
 
-// 1. Upload File
+// 1. Upload File (Now with BLOB Storage)
 app.post('/api/files/upload', verifyToken, upload.single('file'), async (req, res) => {
     try {
         const { subject, filename } = req.body;
-
-        if (!subject || !filename || !req.file) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
+        if (!subject || !filename || !req.file) return res.status(400).json({ error: 'Missing required fields' });
 
         const fileId = uuidv4();
-        console.log(`📤 File upload attempt: ${filename} (${req.file.size} bytes) by user ${req.userId}`);
+        const blobName = `${req.userId}/${fileId}-${filename}`;
+        
+        console.log(`📤 Uploading to BLOB: ${blobName}`);
 
-        // Insert into SQL database with UserId
+        // 1. Upload to Azure Blob Storage
+        const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+        await blockBlobClient.uploadData(req.file.buffer, {
+            blobHTTPHeaders: { blobContentType: req.file.mimetype }
+        });
+
+        // 2. Insert metadata into SQL database
         const insertQuery = `
-            INSERT INTO Files (Id, UserId, Subject, Filename, FileData, FileSize)
-            VALUES (@id, @userId, @subject, @filename, @fileData, @fileSize)
+            INSERT INTO Files (Id, UserId, Subject, Filename, BlobName, FileSize)
+            VALUES (@id, @userId, @subject, @filename, @blobName, @fileSize)
         `;
 
         const connection = new Connection(sqlConfig);
-
         connection.on('connect', (err) => {
-            if (err) {
-                console.error('❌ Connection error during upload:', err.message);
-                return res.status(500).json({ error: 'Connection failed: ' + err.message });
-            }
-
-            console.log('✅ Database connected for upload');
+            if (err) return res.status(500).json({ error: 'DB Connection failed' });
 
             const request = new Request(insertQuery, (err) => {
                 connection.close();
-                if (err) {
-                    console.error('❌ Insert error details:', err.message);
-                    console.error('Error code:', err.code);
-                    console.error('Error number:', err.number);
-                    return res.status(500).json({ error: 'Database error: ' + err.message });
-                }
-                console.log(`✅ File uploaded successfully: ${fileId}`);
-                res.json({ success: true, fileId, message: 'File uploaded successfully' });
+                if (err) return res.status(500).json({ error: 'DB Insert failed: ' + err.message });
+                res.json({ success: true, fileId, message: 'File uploaded to Blob Storage' });
             });
-
-            // Set longer timeout for file upload request
-            request.setTimeout(120000); // 2 minutes
-
-            // Ensure buffer is a Buffer
-            const fileBuffer = Buffer.isBuffer(req.file.buffer) ? req.file.buffer : Buffer.from(req.file.buffer);
-            const fileSize = fileBuffer.length;
-
-            console.log(`📊 File details: Size=${fileSize} bytes, Subject=${subject}, Filename=${filename}`);
 
             request.addParameter('id', TYPES.UniqueIdentifier, fileId);
             request.addParameter('userId', TYPES.UniqueIdentifier, req.userId);
-            request.addParameter('subject', TYPES.NVarChar, subject, { length: 500 });
-            request.addParameter('filename', TYPES.NVarChar, filename, { length: 500 });
-            request.addParameter('fileData', TYPES.VarBinary, fileBuffer);
-            request.addParameter('fileSize', TYPES.Int, fileSize);
+            request.addParameter('subject', TYPES.NVarChar, subject);
+            request.addParameter('filename', TYPES.NVarChar, filename);
+            request.addParameter('blobName', TYPES.NVarChar, blobName);
+            request.addParameter('fileSize', TYPES.Int, req.file.size);
 
             connection.execSql(request);
         });
-
-        connection.on('error', (err) => {
-            console.error('❌ Connection error event:', err.message);
-        });
-
         connection.connect();
     } catch (error) {
-        console.error('❌ Upload error:', error.message);
+        console.error('Upload error:', error);
         res.status(500).json({ error: 'Upload failed: ' + error.message });
     }
 });
@@ -657,167 +642,116 @@ app.get('/api/files', async (req, res) => {
     }
 });
 
-// 3. View File (inline)
+// 3. View File (From Blob)
 app.get('/api/files/:fileId/view', async (req, res) => {
     try {
         const { fileId } = req.params;
-        console.log(`👁️  View request: ${fileId}`);
-        const query = `SELECT Filename, FileData FROM Files WHERE Id = @id`;
+        const query = `SELECT Filename, BlobName FROM Files WHERE Id = @id`;
 
         const connection = new Connection(sqlConfig);
-
         connection.on('connect', (err) => {
-            if (err) return res.status(500).json({ error: 'Connection failed' });
+            if (err) return res.status(500).json({ error: 'DB Connection failed' });
 
-            const request = new Request(query, (err, rowCount, rows) => {
+            const request = new Request(query, async (err, rowCount, rows) => {
                 connection.close();
-                if (err || rows.length === 0) {
-                    return res.status(404).json({ error: 'File not found' });
-                }
+                if (err || rowCount === 0) return res.status(404).json({ error: 'File not found' });
 
                 const filename = rows[0][0].value;
-                let fileData = rows[0][1].value;
+                const blobName = rows[0][1].value;
 
-                // Ensure fileData is a Buffer
-                if (!Buffer.isBuffer(fileData)) {
-                    fileData = Buffer.from(fileData);
-                }
-
-                // Determine Content-Type based on file extension
-                const ext = filename.toLowerCase().split('.').pop();
-                let contentType = 'application/octet-stream';
-
-                switch (ext) {
-                    case 'pdf': contentType = 'application/pdf'; break;
-                    case 'txt': contentType = 'text/plain'; break;
-                    case 'doc': contentType = 'application/msword'; break;
-                    case 'docx': contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'; break;
-                    case 'xls': contentType = 'application/vnd.ms-excel'; break;
-                    case 'xlsx': contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; break;
-                    case 'ppt': contentType = 'application/vnd.ms-powerpoint'; break;
-                    case 'pptx': contentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'; break;
-                    case 'jpg':
-                    case 'jpeg': contentType = 'image/jpeg'; break;
-                    case 'png': contentType = 'image/png'; break;
-                    case 'gif': contentType = 'image/gif'; break;
-                    case 'html': contentType = 'text/html'; break;
-                    case 'csv': contentType = 'text/csv'; break;
-                    // Video formats
-                    case 'mp4': contentType = 'video/mp4'; break;
-                    case 'webm': contentType = 'video/webm'; break;
-                    case 'mov': contentType = 'video/quicktime'; break;
-                    case 'avi': contentType = 'video/x-msvideo'; break;
-                    case 'mkv': contentType = 'video/x-matroska'; break;
-                    case 'flv': contentType = 'video/x-flv'; break;
-                    case 'm4v': contentType = 'video/x-m4v'; break;
-                    case 'ogv': contentType = 'video/ogg'; break;
-                    case '3gp': contentType = 'video/3gpp'; break;
-                    case 'ts': contentType = 'video/mp2t'; break;
-                    case 'vob': contentType = 'video/x-vob'; break;
-                    // Audio formats
-                    case 'mp3': contentType = 'audio/mpeg'; break;
-                    case 'wav': contentType = 'audio/wav'; break;
-                    case 'ogg':
-                    case 'oga': contentType = 'audio/ogg'; break;
-                    case 'aac': contentType = 'audio/aac'; break;
-                    case 'flac': contentType = 'audio/flac'; break;
-                    case 'm4a': contentType = 'audio/mp4'; break;
-                    case 'wma': contentType = 'audio/x-ms-wma'; break;
-                    case 'aiff': contentType = 'audio/aiff'; break;
-                    case 'ape': contentType = 'audio/x-ape'; break;
-                }
+                const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+                const downloadResponse = await blockBlobClient.download(0);
 
                 res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-                res.setHeader('Content-Type', contentType);
-                res.setHeader('Content-Length', fileData.length);
-                res.end(fileData);
+                res.setHeader('Content-Type', downloadResponse.contentType);
+                downloadResponse.readableStreamBody.pipe(res);
             });
 
             request.addParameter('id', TYPES.UniqueIdentifier, fileId);
             connection.execSql(request);
         });
-
         connection.connect();
     } catch (error) {
-        console.error('View error:', error);
         res.status(500).json({ error: 'View failed' });
     }
 });
 
-// 3b. Download File
+// 3b. Download File (From Blob)
 app.get('/api/files/:fileId/download', async (req, res) => {
     try {
         const { fileId } = req.params;
-        console.log(`⬇️  Download request: ${fileId}`);
-        const query = `SELECT Filename, FileData FROM Files WHERE Id = @id`;
+        const query = `SELECT Filename, BlobName FROM Files WHERE Id = @id`;
 
         const connection = new Connection(sqlConfig);
-
         connection.on('connect', (err) => {
-            if (err) return res.status(500).json({ error: 'Connection failed' });
+            if (err) return res.status(500).json({ error: 'DB Connection failed' });
 
-            const request = new Request(query, (err, rowCount, rows) => {
+            const request = new Request(query, async (err, rowCount, rows) => {
                 connection.close();
-                if (err || rows.length === 0) {
-                    console.error(`❌ File not found for download: ${fileId}`);
-                    return res.status(404).json({ error: 'File not found' });
-                }
+                if (err || rowCount === 0) return res.status(404).json({ error: 'File not found' });
 
                 const filename = rows[0][0].value;
-                let fileData = rows[0][1].value;
+                const blobName = rows[0][1].value;
 
-                // Ensure fileData is a Buffer
-                if (!Buffer.isBuffer(fileData)) {
-                    fileData = Buffer.from(fileData);
-                }
+                const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+                const downloadResponse = await blockBlobClient.download(0);
 
-                console.log(`✅ File downloaded: ${filename}`);
                 res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
                 res.setHeader('Content-Type', 'application/octet-stream');
-                res.setHeader('Content-Length', fileData.length);
-                res.end(fileData);
+                downloadResponse.readableStreamBody.pipe(res);
             });
 
             request.addParameter('id', TYPES.UniqueIdentifier, fileId);
             connection.execSql(request);
         });
-
         connection.connect();
     } catch (error) {
-        console.error('❌ Download error:', error);
         res.status(500).json({ error: 'Download failed' });
     }
 });
 
-// 4. Delete File
+// 4. Delete File (From Blob and SQL)
 app.delete('/api/files/:fileId', async (req, res) => {
     try {
         const { fileId } = req.params;
-        console.log(`🗑️  Delete request: ${fileId}`);
-        const query = `DELETE FROM Files WHERE Id = @id`;
+        const query = `SELECT BlobName FROM Files WHERE Id = @id`;
 
         const connection = new Connection(sqlConfig);
-
         connection.on('connect', (err) => {
-            if (err) return res.status(500).json({ error: 'Connection failed' });
+            if (err) return res.status(500).json({ error: 'DB Connection failed' });
 
-            const request = new Request(query, (err) => {
-                connection.close();
-                if (err) {
-                    console.error(`❌ Delete failed: ${err.message}`);
-                    return res.status(500).json({ error: 'Delete failed' });
+            const request = new Request(query, async (err, rowCount, rows) => {
+                if (err || rowCount === 0) {
+                    connection.close();
+                    return res.status(404).json({ error: 'File not found' });
                 }
-                console.log(`✅ File deleted: ${fileId}`);
-                res.json({ success: true, message: 'File deleted' });
+
+                const blobName = rows[0][0].value;
+
+                // 1. Delete from Blob Storage
+                try {
+                    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+                    await blockBlobClient.delete();
+                } catch (blobErr) {
+                    console.warn('Blob delete warning:', blobErr.message);
+                }
+
+                // 2. Delete from SQL
+                const deleteQuery = `DELETE FROM Files WHERE Id = @id`;
+                const deleteRequest = new Request(deleteQuery, (err) => {
+                    connection.close();
+                    if (err) return res.status(500).json({ error: 'DB Delete failed' });
+                    res.json({ success: true, message: 'File deleted from Blob and SQL' });
+                });
+                deleteRequest.addParameter('id', TYPES.UniqueIdentifier, fileId);
+                connection.execSql(deleteRequest);
             });
 
             request.addParameter('id', TYPES.UniqueIdentifier, fileId);
             connection.execSql(request);
         });
-
         connection.connect();
     } catch (error) {
-        console.error('Delete error:', error);
         res.status(500).json({ error: 'Delete failed' });
     }
 });
@@ -867,30 +801,51 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', version: '1.0', storage: 'SQL Database' });
 });
 
-// ======= AI ROUTES (GEMINI PRO - DATABASE AWARE) =======
+// ======= AI ROUTES (GEMINI PRO - DATABASE AWARE WITH BLOB) =======
 
-// Helper to fetch file content from SQL
+// Helper to fetch file content from Blob Storage
 async function getFileContent(fileId) {
     return new Promise((resolve, reject) => {
-        const query = `SELECT Filename, FileData FROM Files WHERE Id = @id`;
+        const query = `SELECT Filename, BlobName FROM Files WHERE Id = @id`;
         const connection = new Connection(sqlConfig);
         
         connection.on('connect', (err) => {
             if (err) return reject(err);
-            const request = new Request(query, (err, rowCount, rows) => {
+            const request = new Request(query, async (err, rowCount, rows) => {
                 connection.close();
                 if (err || rowCount === 0) return resolve(null);
                 
                 const filename = rows[0][0].value;
-                const buffer = rows[0][1].value;
-                // Convert buffer to text (works best for .txt and simple files)
-                const text = Buffer.isBuffer(buffer) ? buffer.toString('utf8') : '';
-                resolve({ filename, text });
+                const blobName = rows[0][1].value;
+
+                try {
+                    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+                    const downloadResponse = await blockBlobClient.download(0);
+                    const body = await streamToText(downloadResponse.readableStreamBody);
+                    resolve({ filename, text: body });
+                } catch (e) {
+                    console.error('Blob read error:', e);
+                    resolve(null);
+                }
             });
             request.addParameter('id', TYPES.UniqueIdentifier, fileId);
             connection.execSql(request);
         });
         connection.connect();
+    });
+}
+
+// Stream helper
+async function streamToText(readableStream) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        readableStream.on("data", (data) => {
+            chunks.push(data.toString());
+        });
+        readableStream.on("end", () => {
+            resolve(chunks.join(""));
+        });
+        readableStream.on("error", reject);
     });
 }
 
