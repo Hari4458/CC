@@ -46,47 +46,6 @@
       <div id="folders"></div>
     </section>
 
-    <!-- AI Assistant Section -->
-    <section class="ai-assistant">
-      <div class="ai-header">
-        <h2>✨ AI Study Assistant</h2>
-        <span class="ai-status" id="aiStatus">Ready to help</span>
-      </div>
-      <div class="ai-box">
-        <div class="ai-tabs">
-          <button class="ai-tab active" onclick="switchAiTab('chat')">💬 Chat</button>
-          <button class="ai-tab" onclick="switchAiTab('summarize')">📝 Summarize</button>
-          <button class="ai-tab" onclick="switchAiTab('quiz')">❓ Quiz</button>
-        </div>
-        
-        <div id="aiChat" class="ai-content active">
-          <div class="chat-messages" id="chatMessages">
-            <div class="message ai">Hi! I'm your study assistant. Select a note to start chatting or ask me anything!</div>
-          </div>
-          <div class="chat-input-box">
-            <input type="text" id="aiInput" placeholder="Ask a question about your notes...">
-            <button onclick="sendAiChat()">Send</button>
-          </div>
-        </div>
-
-        <div id="aiSummarize" class="ai-content">
-          <div class="ai-action-box">
-            <p>Select a note to generate a summary.</p>
-            <button class="primary-btn" onclick="summarizeCurrentNote()">Generate Summary</button>
-          </div>
-          <div class="ai-result" id="summaryResult"></div>
-        </div>
-
-        <div id="aiQuiz" class="ai-content">
-          <div class="ai-action-box">
-            <p>Ready to test your knowledge?</p>
-            <button class="primary-btn" onclick="generateQuiz()">Create 5 MCQs</button>
-          </div>
-          <div class="ai-result" id="quizResult"></div>
-        </div>
-      </div>
-    </section>
-
   </main>
 
   <!-- Floating Menu -->
