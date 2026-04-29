@@ -867,39 +867,63 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', version: '1.0', storage: 'SQL Database' });
 });
 
-// ======= AI ROUTES (GEMINI FREE TIER) =======
+// ======= AI ROUTES (GEMINI PRO - DATABASE AWARE) =======
+
+// Helper to fetch file content from SQL
+async function getFileContent(fileId) {
+    return new Promise((resolve, reject) => {
+        const query = `SELECT Filename, FileData FROM Files WHERE Id = @id`;
+        const connection = new Connection(sqlConfig);
+        
+        connection.on('connect', (err) => {
+            if (err) return reject(err);
+            const request = new Request(query, (err, rowCount, rows) => {
+                connection.close();
+                if (err || rowCount === 0) return resolve(null);
+                
+                const filename = rows[0][0].value;
+                const buffer = rows[0][1].value;
+                // Convert buffer to text (works best for .txt and simple files)
+                const text = Buffer.isBuffer(buffer) ? buffer.toString('utf8') : '';
+                resolve({ filename, text });
+            });
+            request.addParameter('id', TYPES.UniqueIdentifier, fileId);
+            connection.execSql(request);
+        });
+        connection.connect();
+    });
+}
+
+const APP_INFO = `
+StudyCloud is a premium cloud-based notes manager. 
+Features: Secure login, Folder-based organization (Subjects), Multi-format file support, and an AI Study Assistant.
+Database: Azure SQL. Backend: Node.js. Hosting: Azure App Service.
+`;
 
 // 7. AI Summarize
 app.post('/api/ai/summarize', verifyToken, async (req, res) => {
     try {
-        const { text } = req.body;
-        if (!text) return res.status(400).json({ error: 'No text provided' });
+        const { fileId } = req.body;
+        if (!fileId) return res.status(400).json({ error: 'No file selected' });
+
+        const fileData = await getFileContent(fileId);
+        if (!fileData) return res.status(404).json({ error: 'File content not found' });
 
         const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) return res.status(500).json({ error: 'Gemini API not configured' });
-
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+        const prompt = `Summarize these notes for exam revision. File: ${fileData.filename}\nContent:\n${fileData.text.substring(0, 10000)}`;
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [{ text: `Summarize the following notes briefly for exam revision. Focus on key concepts and bullet points:\n\n${text}` }]
-                }]
-            })
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
 
         const data = await response.json();
-        if (data.error) {
-            console.error('Gemini Error:', data.error);
-            return res.status(500).json({ error: 'Gemini processing failed' });
-        }
-
         const summary = data.candidates[0].content.parts[0].text;
         res.json({ summary });
     } catch (error) {
-        console.error('AI Summarize error:', error);
         res.status(500).json({ error: 'AI Summarize failed' });
     }
 });
@@ -907,34 +931,28 @@ app.post('/api/ai/summarize', verifyToken, async (req, res) => {
 // 8. AI Chat (Q&A)
 app.post('/api/ai/chat', verifyToken, async (req, res) => {
     try {
-        const { text, question } = req.body;
-        if (!text || !question) return res.status(400).json({ error: 'Text and question required' });
-
+        const { fileId, question } = req.body;
         const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) return res.status(500).json({ error: 'Gemini API not configured' });
-
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+        let context = "The user is asking about StudyCloud.";
+        if (fileId) {
+            const fileData = await getFileContent(fileId);
+            if (fileData) context = `User is focusing on file: ${fileData.filename}\nContent:\n${fileData.text.substring(0, 10000)}`;
+        }
+
+        const systemPrompt = `You are the StudyCloud AI Assistant. ${APP_INFO}\n\n${context}\n\nQuestion: ${question}`;
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [{ text: `You are a helpful study assistant. Answer questions based ONLY on the provided notes. If the answer is not in the notes, say 'I don't find that information in your notes.'\n\nNotes:\n${text}\n\nQuestion: ${question}` }]
-                }]
-            })
+            body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
         });
 
         const data = await response.json();
-        if (data.error) {
-            console.error('Gemini Error:', data.error);
-            return res.status(500).json({ error: 'Gemini processing failed' });
-        }
-
         const answer = data.candidates[0].content.parts[0].text;
         res.json({ answer });
     } catch (error) {
-        console.error('AI Chat error:', error);
         res.status(500).json({ error: 'AI Chat failed' });
     }
 });
@@ -942,34 +960,25 @@ app.post('/api/ai/chat', verifyToken, async (req, res) => {
 // 9. AI Quiz Generator
 app.post('/api/ai/quiz', verifyToken, async (req, res) => {
     try {
-        const { text } = req.body;
-        if (!text) return res.status(400).json({ error: 'No text provided' });
+        const { fileId } = req.body;
+        if (!fileId) return res.status(400).json({ error: 'No file selected' });
 
+        const fileData = await getFileContent(fileId);
         const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) return res.status(500).json({ error: 'Gemini API not configured' });
-
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+        const prompt = `Generate 5 MCQs with answers for these notes: ${fileData.filename}\nContent:\n${fileData.text.substring(0, 10000)}`;
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [{ text: `Generate 5 Multiple Choice Questions (MCQs) from the provided notes. Provide the answer for each question at the end.\n\nNotes:\n${text}` }]
-                }]
-            })
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
 
         const data = await response.json();
-        if (data.error) {
-            console.error('Gemini Error:', data.error);
-            return res.status(500).json({ error: 'Gemini processing failed' });
-        }
-
         const quiz = data.candidates[0].content.parts[0].text;
         res.json({ quiz });
     } catch (error) {
-        console.error('AI Quiz error:', error);
         res.status(500).json({ error: 'AI Quiz failed' });
     }
 });

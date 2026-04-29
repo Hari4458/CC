@@ -539,14 +539,16 @@ async function sendAiChat() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
     try {
-        const context = selectedNote ? `Selected Note: ${selectedNote.filename} (Subject: ${selectedNote.subject})` : "General study assistance";
         const response = await fetch(`${API_URL}/ai/chat`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ text: context, question })
+            body: JSON.stringify({ 
+                fileId: selectedNote ? selectedNote.id : null, 
+                question 
+            })
         });
         
         const data = await response.json();
@@ -570,7 +572,7 @@ async function summarizeCurrentNote() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ text: `Note Content Summary Request for: ${selectedNote.filename} (${selectedNote.subject})` })
+            body: JSON.stringify({ fileId: selectedNote.id })
         });
         
         const data = await response.json();
@@ -593,7 +595,7 @@ async function generateQuiz() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ text: `Generate quiz for: ${selectedNote.filename} (${selectedNote.subject})` })
+            body: JSON.stringify({ fileId: selectedNote.id })
         });
         
         const data = await response.json();
