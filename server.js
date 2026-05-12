@@ -82,12 +82,28 @@ async function sendVerificationEmail(email, username, verificationToken) {
 }
 
 // Azure Blob Storage Configuration
+// Polyfill for crypto if needed in Node.js
+if (typeof globalThis.crypto === 'undefined') {
+    const crypto = require('crypto');
+    globalThis.crypto = {
+        getRandomValues: (arr) => {
+            if (arr instanceof Uint8Array) {
+                return crypto.randomBytes(arr.length);
+            }
+            throw new Error('getRandomValues only supports Uint8Array');
+        },
+        randomUUID: () => crypto.randomUUID(),
+        subtle: {}
+    };
+}
+
+// Azure Blob Storage Configuration
 const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
 const containerClient = blobServiceClient.getContainerClient('notes');
 
 // Google Gemini AI Configuration
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const geminiModel = genAI.getGenerativeModel({ 
+const geminiModel = genAI.getGenerativeModel({
     model: "gemini-1.5-flash",
     safetySettings: [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -555,7 +571,7 @@ app.get('/api/auth/verify', verifyToken, (req, res) => {
 
 // ======= API ROUTES =======
 
-// 1. Upload File (Now with BLOB Storage)
+// 1. Upload File (Azure Blob Storage)
 app.post('/api/files/upload', verifyToken, upload.single('file'), async (req, res) => {
     try {
         const { subject, filename } = req.body;
@@ -563,7 +579,7 @@ app.post('/api/files/upload', verifyToken, upload.single('file'), async (req, re
 
         const fileId = uuidv4();
         const blobName = `${req.userId}/${fileId}-${filename}`;
-        
+
         console.log(`📤 Uploading to BLOB: ${blobName}`);
 
         // 1. Upload to Azure Blob Storage
@@ -584,7 +600,10 @@ app.post('/api/files/upload', verifyToken, upload.single('file'), async (req, re
 
             const request = new Request(insertQuery, (err) => {
                 connection.close();
-                if (err) return res.status(500).json({ error: 'DB Insert failed: ' + err.message });
+                if (err) {
+                    console.error('DB Insert failed:', err);
+                    return res.status(500).json({ error: 'DB Insert failed: ' + err.message });
+                }
                 res.json({ success: true, fileId, message: 'File uploaded to Blob Storage' });
             });
 
@@ -821,13 +840,13 @@ async function getFileContent(fileId) {
     return new Promise((resolve, reject) => {
         const query = `SELECT Filename, BlobName FROM Files WHERE Id = @id`;
         const connection = new Connection(sqlConfig);
-        
+
         connection.on('connect', (err) => {
             if (err) return reject(err);
             const request = new Request(query, async (err, rowCount, rows) => {
                 connection.close();
                 if (err || rowCount === 0) return resolve(null);
-                
+
                 const filename = rows[0][0].value;
                 const blobName = rows[0][1].value;
 
@@ -902,7 +921,7 @@ app.post('/api/ai/summarize', verifyToken, async (req, res) => {
         });
 
         const data = await response.json();
-        
+
         if (data.results && data.results.documents && data.results.documents[0]) {
             const summary = data.results.documents[0].sentences.map(s => s.text).join(' ');
             res.json({ summary: "📊 [Azure AI Summary]: " + summary });

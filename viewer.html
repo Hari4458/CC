@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>File Viewer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -58,11 +59,12 @@
             justify-content: center;
             align-items: flex-start;
             overflow-y: auto;
+            flex-wrap: wrap;
+            gap: 16px;
         }
 
         #pdfViewer {
             width: 100%;
-            height: auto;
             display: flex;
             flex-direction: column;
             gap: 10px;
@@ -126,20 +128,7 @@
             max-width: 600px;
             margin-top: 20px;
         }
-    <style>
-        /* ... existing styles ... */
     </style>
-
-    <!-- Application Insights SDK -->
-    <script type="text/javascript">
-      !function(T,l,y){var S=T.location,k="script",D="connectionString",C="ingestionendpoint",I="disableExceptionTracking",E="ai.device.",b="toLowerCase",w="crossOrigin",n="POST",t="statsbeat",g="endpoints",r="data",u=y.config||{};if(y.config=u,u[D]||u.instrumentationKey||u.endpointUrl){var a,f;u[I]=u[I]!==!1,u[E+"id"]=u[E+"id"]||u.deviceId,u[E+"type"]=u[E+"type"]||u.deviceType,f=u.endpointUrl||u[C]||(a=u[D])&&function(e){var t=e[b](),n=new RegExp("([^;=]+)=([^;=]+)","g"),r={};for(let e;e=n.exec(t);)r[e[1]]=e[2];if(r[C])return r[C];var i=r.endpointsuffix,o=r.location?r.location+".":"";return"https://"+o+"dc."+(i||"services.visualstudio.com")}(a),u[g]&&u[g][t]&&(u[g][t]=f+"/v2/statsbeat"),u[g]&&u[g][r]&&(u[g][r]=f+"/v2/track"),u[I]||(y.extensionConfig=y.extensionConfig||{},y.extensionConfig.AppInsightsExtension={}),T[l]=function(e){var t,n,r,i,o,a;function s(e,t){var n=o.split(".");2===n.length&&(o=n[1]),e[o]=t}return o="ai.sdk",s(T,e),o="ai.config",s(T,u),o="ai.version",s(T,"2.8.15"),t=T[l]||{},n=T.location,r=n.href,i=n.pathname,o="ai.context",s(T,{location:{href:r,pathname:i},sdk:{name:"javascript",version:"2.8.15"}}),o="ai.track",s(T,function(e,t,n,r){T[l].queue.push([e,t,n,r])}),T[l].queue=[],setTimeout(function(){var e=document.createElement(k);e.src=y.src,e[w]=y.crossOrigin||"anonymous",document.head.appendChild(e)},0),T[l]}(y)}else T.console&&T.console.error("AppInsights: ConnectionString or InstrumentationKey is required")}(window,"appInsights",{
-        src: "https://js.monitor.azure.com/scripts/b/ai.2.min.js",
-        config: {
-          connectionString: "InstrumentationKey=5190315c-a2d0-4d87-97a8-40e92061a1e5;IngestionEndpoint=https://centralindia-0.in.applicationinsights.azure.com/;LiveEndpoint=https://centralindia.livediagnostics.monitor.azure.com/;ApplicationId=110c1966-3ba8-42e6-bf3e-ba2e751f9aa9"
-        }
-      });
-      appInsights.trackPageView();
-    </script>
 </head>
 
 <body>
@@ -168,7 +157,6 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         const API_URL = window.location.origin + '/api';
 
-        // Get file ID from URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const fileId = urlParams.get('id');
         const filename = decodeURIComponent(urlParams.get('filename') || 'File');
@@ -190,153 +178,91 @@
             viewFile(fileId, filename);
         }
 
-        function viewFile(fileId, filename) {
-            const parts = filename.toLowerCase().split('.');
+        function viewFile(currentFileId, currentFilename) {
+            const parts = currentFilename.toLowerCase().split('.');
             const ext = parts.length > 1 ? parts[parts.length - 1] : '';
-
-            console.log('viewFile called - filename:', filename, 'ext:', ext);
 
             document.getElementById('loadingMsg').style.display = 'block';
             document.getElementById('loadingMsg').textContent = '⏳ Loading file...';
 
-            fetch(`${API_URL}/files/${fileId}/view`)
-                .then(response => {
+            fetch(`${API_URL}/files/${currentFileId}/view`)
+                .then((response) => {
                     if (!response.ok) throw new Error('Failed to fetch file');
-
-                    console.log('Response content-type:', response.headers.get('content-type'));
-
                     return response.blob();
                 })
-                .then(blob => {
-                    console.log('Got blob:', blob.type, 'size:', blob.size);
+                .then((blob) => {
                     document.getElementById('loadingMsg').style.display = 'none';
-                    // First try to detect type from content, then from extension
-                    detectAndDisplayFile(blob, ext, filename);
+                    detectAndDisplayFile(blob, ext, currentFilename);
                 })
-                .catch(error => {
-                    console.error('Fetch error:', error);
+                .catch((error) => {
                     showError('Failed to view file: ' + error.message);
                 });
         }
 
-        function detectAndDisplayFile(blob, ext, filename) {
-            console.log('detectAndDisplayFile - ext:', ext, 'filename:', filename, 'blob type:', blob.type);
-
-            // First, check blob.type if available (most reliable for media files)
+        function detectAndDisplayFile(blob, ext, currentFilename) {
             if (blob.type.includes('video')) {
-                console.log('Detected video from blob type:', blob.type);
-                displayVideo(blob, ext);
+                displayVideo(blob);
                 return;
             }
 
             if (blob.type.includes('audio')) {
-                console.log('Detected audio from blob type:', blob.type);
-                displayAudio(blob, ext);
+                displayAudio(blob);
                 return;
             }
 
-            // Then check if extension indicates a known media type
             if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'm4v', 'ogv', '3gp', 'ts', 'vob'].includes(ext)) {
-                console.log('Detected video format:', ext);
-                displayVideo(blob, ext);
+                displayVideo(blob);
                 return;
             }
 
             if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a', 'wma', 'aiff', 'ape'].includes(ext)) {
-                console.log('Detected audio format:', ext);
-                displayAudio(blob, ext);
+                displayAudio(blob);
                 return;
             }
 
-            // Read first few bytes to detect file type for ambiguous files
             const reader = new FileReader();
-            reader.onload = (e) => {
-                const arr = new Uint8Array(e.target.result).subarray(0, 8);
+            reader.onload = (event) => {
+                const arr = new Uint8Array(event.target.result).subarray(0, 8);
                 let header = '';
                 for (let i = 0; i < arr.length; i++) {
                     header += arr[i].toString(16);
                 }
 
-                console.log('File header:', header, 'blob type:', blob.type);
-
-                // Detect PDF
-                if (blob.type.includes('pdf') || checkPDFHeader(e.target.result)) {
-                    console.log('Detected PDF');
+                if (blob.type.includes('pdf') || checkPDFHeader(event.target.result)) {
                     displayPDF(blob);
-                }
-                // Detect images
-                else if (blob.type.includes('image') || isImageHeader(header)) {
-                    console.log('Detected image');
+                } else if (blob.type.includes('image') || isImageHeader(header)) {
                     displayImage(blob);
-                }
-                // Detect video (MP4, WebM, etc. by common headers)
-                else if (blob.type.includes('video') || isVideoHeader(header)) {
-                    console.log('Detected video by header');
-                    displayVideo(blob, ext);
-                }
-                // Detect audio
-                else if (blob.type.includes('audio') || isAudioHeader(header)) {
-                    console.log('Detected audio by header');
-                    displayAudio(blob, ext);
-                }
-                // Default to display based on extension
-                else {
-                    console.log('No specific type detected, using displayFile');
-                    displayFile(blob, ext, filename);
+                } else if (blob.type.includes('video') || isVideoHeader(header)) {
+                    displayVideo(blob);
+                } else if (blob.type.includes('audio') || isAudioHeader(header)) {
+                    displayAudio(blob);
+                } else {
+                    displayFile(blob, ext, currentFilename);
                 }
             };
             reader.readAsArrayBuffer(blob.slice(0, 8));
         }
 
         function isVideoHeader(header) {
-            const h = header.toLowerCase();
-
-            // WebM: 1A 45 DF A3
-            if (h.includes('1a45dfa3')) return true;
-
-            // ASF/WMV: 30 26 B2 75
-            if (h.includes('3026b275')) return true;
-
-            // MP4: Has 'ftyp' or 'mdat' box typically at offset 4-7
-            // ftyp in hex is 66747970
-            if (h.includes('66747970') || h.includes('6d646174')) return true;
-
-            // FLV: FLV signature starts with 0x46 0x4C 0x56
-            if (h.startsWith('464c56')) return true;
-
-            // Matroska (MKV): 1A 45 DF A3
-            if (h.startsWith('1a45dfa3')) return true;
-
-            return false;
+            const normalized = header.toLowerCase();
+            return normalized.includes('1a45dfa3') || normalized.includes('3026b275') || normalized.includes('66747970') || normalized.startsWith('464c56');
         }
 
         function isAudioHeader(header) {
-            // MP3: FFF prefix (or FFE for MPEG)
-            // WAV: 52494646 (RIFF)
-            // OGG: 4F6767 (OGG)
-            // FLAC: 664C61 (fLa)
-            if (header.startsWith('fff') || header.startsWith('ffe')) return true; // MP3
-            if (header.startsWith('52494646')) return true; // WAV
-            if (header.startsWith('4f6767')) return true; // OGG
-            if (header.startsWith('664c6143')) return true; // FLAC
-            return false;
+            return header.startsWith('fff') || header.startsWith('ffe') || header.startsWith('52494646') || header.startsWith('4f6767') || header.startsWith('664c6143');
         }
 
         function checkPDFHeader(arrayBuffer) {
             const arr = new Uint8Array(arrayBuffer);
-            return arr[0] === 0x25 && arr[1] === 0x50 && arr[2] === 0x44 && arr[3] === 0x46; // %PDF
+            return arr[0] === 0x25 && arr[1] === 0x50 && arr[2] === 0x44 && arr[3] === 0x46;
         }
 
         function isImageHeader(header) {
-            // JPEG: FFD8
-            // PNG: 89504E47
-            // GIF: 474946
-            // BMP: 424D
             const imageHeaders = ['ffd8', '89504e47', '474946', '424d'];
-            return imageHeaders.some(h => header.startsWith(h));
+            return imageHeaders.some((value) => header.startsWith(value));
         }
 
-        function displayFile(blob, ext, filename) {
+        function displayFile(blob, ext) {
             if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(ext)) {
                 displayImage(blob);
             } else if (ext === 'pdf') {
@@ -344,9 +270,9 @@
             } else if (['txt', 'log', 'csv', 'json', 'xml', 'html', 'css', 'js', 'md', 'md5', 'sh', 'py', 'rb', 'java'].includes(ext)) {
                 displayText(blob);
             } else if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'm4v', 'ogv', '3gp', 'ts', 'vob'].includes(ext)) {
-                displayVideo(blob, ext);
+                displayVideo(blob);
             } else if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a', 'wma', 'aiff', 'ape'].includes(ext)) {
-                displayAudio(blob, ext);
+                displayAudio(blob);
             } else if (ext === 'docx') {
                 displayDocx(blob);
             } else if (ext === 'xlsx') {
@@ -354,7 +280,6 @@
             } else if (ext === 'pptx') {
                 displayPowerPoint(blob);
             } else {
-                // For unknown types, try text - if it's binary, user gets download option
                 displayText(blob);
             }
         }
@@ -364,21 +289,16 @@
             const img = document.getElementById('imageViewer');
             img.src = url;
             img.style.display = 'block';
-
-            // Keep the blob URL alive for the image to display
-            setTimeout(() => {
-                // Don't revoke URL immediately - keep it for the image to use
-            }, 5000);
         }
 
-        function displayVideo(blob, ext) {
+        function displayVideo(blob) {
             const url = URL.createObjectURL(blob);
             const video = document.getElementById('videoViewer');
             video.src = url;
             video.style.display = 'block';
         }
 
-        function displayAudio(blob, ext) {
+        function displayAudio(blob) {
             const url = URL.createObjectURL(blob);
             const audio = document.getElementById('audioViewer');
             audio.src = url;
@@ -386,18 +306,15 @@
         }
 
         function displayText(blob) {
-            blob.text().then(text => {
-                // Check if the text looks like binary garbage (contains mostly non-printable characters)
+            blob.text().then((text) => {
                 const nonPrintable = (text.match(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g) || []).length;
                 if (nonPrintable > text.length * 0.2) {
-                    // More than 20% non-printable characters = likely binary file
-                    // Don't reject - just show error with download option
                     const errorMsg = document.getElementById('errorMsg');
                     errorMsg.innerHTML = `
                         <p>❌ This appears to be a binary file.</p>
                         <p>Try downloading it instead:</p>
                         <button onclick="downloadCurrentFile()" style="
-                            background: #ff6b6b; color: white; border: none; 
+                            background: #ff6b6b; color: white; border: none;
                             padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;
                             margin-top: 10px;
                         ">⬇️ Download File</button>
@@ -409,13 +326,13 @@
                 const textarea = document.getElementById('textViewer');
                 textarea.value = text;
                 textarea.style.display = 'block';
-            }).catch(error => {
+            }).catch(() => {
                 const errorMsg = document.getElementById('errorMsg');
                 errorMsg.innerHTML = `
                     <p>❌ Could not read file as text.</p>
                     <p>Try downloading it instead:</p>
                     <button onclick="downloadCurrentFile()" style="
-                        background: #ff6b6b; color: white; border: none; 
+                        background: #ff6b6b; color: white; border: none;
                         padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;
                         margin-top: 10px;
                     ">⬇️ Download File</button>
@@ -424,31 +341,15 @@
             });
         }
 
-        function downloadCurrentFile() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const fileId = urlParams.get('id');
-            const filename = decodeURIComponent(urlParams.get('filename') || 'file');
-
-            const a = document.createElement('a');
-            a.href = `${API_URL}/files/${fileId}/download`;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-
         function displayPDF(blob) {
             const url = URL.createObjectURL(blob);
             const pdfViewer = document.getElementById('pdfViewer');
 
-            // Use PDF.js to render the PDF
-            pdfjsLib.getDocument(url).promise.then(pdf => {
-                let pageNum = 1;
-                const renderPage = (num) => {
-                    pdf.getPage(num).then(page => {
+            pdfjsLib.getDocument(url).promise.then((pdf) => {
+                const renderPage = (pageNumber) => {
+                    pdf.getPage(pageNumber).then((page) => {
                         const scale = 1.5;
-                        const viewport = page.getViewport({ scale: scale });
-
+                        const viewport = page.getViewport({ scale });
                         const canvas = document.createElement('canvas');
                         const context = canvas.getContext('2d');
                         canvas.height = viewport.height;
@@ -456,26 +357,24 @@
 
                         page.render({
                             canvasContext: context,
-                            viewport: viewport
+                            viewport
                         }).promise.then(() => {
                             pdfViewer.appendChild(canvas);
-
-                            if (num < pdf.numPages) {
-                                renderPage(num + 1);
+                            if (pageNumber < pdf.numPages) {
+                                renderPage(pageNumber + 1);
                             }
                         });
                     });
                 };
 
-                renderPage(pageNum);
+                renderPage(1);
                 pdfViewer.style.display = 'block';
-            }).catch(error => {
+            }).catch((error) => {
                 showError('Failed to load PDF: ' + error.message);
             });
         }
 
         function displayDocx(blob) {
-            // For DOCX files, offer download or basic view
             const url = URL.createObjectURL(blob);
             const iframe = document.getElementById('docxViewer');
             iframe.src = `https://docs.google.com/gviz/viewer?url=${encodeURIComponent(url)}&embedded=true`;
@@ -483,7 +382,6 @@
         }
 
         function displayExcel(blob) {
-            // For XLSX files, offer download or basic view
             const url = URL.createObjectURL(blob);
             const iframe = document.getElementById('xlsxViewer');
             iframe.src = `https://docs.google.com/gviz/viewer?url=${encodeURIComponent(url)}&embedded=true`;
@@ -491,7 +389,6 @@
         }
 
         function displayPowerPoint(blob) {
-            // For PPTX files, offer download or basic view
             const url = URL.createObjectURL(blob);
             const iframe = document.getElementById('pptxViewer');
             iframe.src = `https://docs.google.com/gviz/viewer?url=${encodeURIComponent(url)}&embedded=true`;
